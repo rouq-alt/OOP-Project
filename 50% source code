@@ -1,0 +1,251 @@
+#include <SFML/Graphics.hpp>
+#include <iostream>
+#include <vector>
+#include <ctime>
+#include <cstdlib>
+#include <cctype>
+#include <cmath>
+using namespace std;
+
+class GameLogic
+{
+private:
+    string word;
+    string guessedWord;
+    int incorrectGuesses;
+    bool hintUsed = false;
+
+public:
+    GameLogic(const vector<string> &words)
+    {
+        srand(static_cast<unsigned>(time(0)));
+        word = words[rand() % words.size()];
+        guessedWord = std::string(word.length(), '_');
+        incorrectGuesses = 0;
+    }
+
+
+    bool guess(char letter)
+    {
+        bool correct = false;
+        for (size_t i = 0; i < word.length(); ++i)
+        {
+            if (word[i] == letter && guessedWord[i] == '_')
+            {
+                guessedWord[i] = letter;
+                correct = true;
+            }
+        }
+        if (!correct)
+        {
+            ++incorrectGuesses;
+        }
+        return correct;
+    }
+    bool useHint() {
+        if (hintUsed) return false; // only one hint allowed
+        hintUsed = true;
+    
+        for (size_t i = 0; i < word.length(); ++i) {
+            if (guessedWord[i] == '_') {
+                guessedWord[i] = word[i]; // reveal one letter
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    bool isHintUsed() const {
+        return hintUsed;
+    }
+    
+
+    string getGuessedWord() const { return guessedWord; }
+    int getIncorrectGuesses() const { return incorrectGuesses; }
+    bool isGameOver() const { return incorrectGuesses >= 6 || guessedWord == word; }
+    bool isGameWon() const { return guessedWord == word; }
+    string getWord() const { return word; }
+};
+
+class TextRenderer
+{
+private:
+    sf::Font font;
+
+public:
+    TextRenderer(const string &fontPath)
+    {
+        if (!font.loadFromFile(fontPath))
+        {
+            std::cerr << "Error loading font: " << fontPath << std::endl;
+        }
+    }
+
+    sf::Text createText(const string &message, int size, const sf::Vector2f &position, sf::Color color = sf::Color::Black) const
+    {
+        sf::Text text(message, font, size);
+        text.setFillColor(color);
+        text.setPosition(position);
+        return text;
+    }
+
+    const sf::Font &getFont() const { return font; }
+};
+
+class HangmanRenderer
+{
+public:
+    void draw(sf::RenderWindow &window, int incorrectGuesses, const sf::Font &font) const
+    {
+        float baseX = 150.f;
+        float baseY = 550.f;
+        float scale = 1.0f;
+        sf::Color lineColor = sf::Color(60, 30, 10);//(139, 69, 19) // dark brown wood
+        float thickness = 6.f;
+
+        // Helper lambda for line drawing
+        auto drawLine = [&](float x1, float y1, float x2, float y2)
+        {
+            sf::Vector2f start(x1, y1);
+            sf::Vector2f end(x2, y2);
+            sf::Vector2f direction = end - start;
+            float length = std::sqrt(direction.x * direction.x + direction.y * direction.y);
+            float angle = std::atan2(direction.y, direction.x) * 180.f / 3.14159f;
+            
+            sf::RectangleShape line(sf::Vector2f(length, thickness));
+            line.setFillColor(lineColor);
+            line.setPosition(start);
+            line.setRotation(angle);
+            window.draw(line);
+        };
+
+        // Gallows
+        drawLine(baseX, baseY, baseX + 120.f, baseY);                              // base
+        drawLine(baseX + 60.f, baseY, baseX + 60.f, baseY - 250.f);                // pole
+        drawLine(baseX + 60.f, baseY - 250.f, baseX + 140.f, baseY - 250.f);       // top beam
+        drawLine(baseX + 140.f, baseY - 250.f, baseX + 140.f, baseY - 220.f);      // rope
+
+        // Head
+        if (incorrectGuesses > 0)
+        {
+            sf::CircleShape head(25.f);
+            head.setPosition(baseX + 115.f, baseY - 220.f);
+            head.setFillColor(sf::Color::Transparent);
+            head.setOutlineColor(sf::Color::Black);
+            head.setOutlineThickness(3.f);
+            window.draw(head);
+
+            // Eyes
+            sf::CircleShape eye(3.f);
+            eye.setFillColor(sf::Color::Black);
+            eye.setPosition(baseX + 125.f, baseY - 210.f); // left eye
+            window.draw(eye);
+            eye.setPosition(baseX + 135.f, baseY - 210.f); // right eye
+            window.draw(eye);
+
+            // Smile
+            sf::RectangleShape mouth(sf::Vector2f(10.f, 2.f));
+            mouth.setFillColor(sf::Color::Black);
+            mouth.setPosition(baseX + 127.f, baseY - 195.f);
+            window.draw(mouth);
+        }
+
+        // Body
+        if (incorrectGuesses > 1)
+            drawLine(baseX + 140.f, baseY - 170.f, baseX + 140.f, baseY - 100.f); // torso
+
+        // Left arm
+        if (incorrectGuesses > 2)
+            drawLine(baseX + 140.f, baseY - 160.f, baseX + 115.f, baseY - 140.f);
+
+        // Right arm
+        if (incorrectGuesses > 3)
+            drawLine(baseX + 140.f, baseY - 160.f, baseX + 165.f, baseY - 140.f);
+
+        // Left leg
+        if (incorrectGuesses > 4)
+            drawLine(baseX + 140.f, baseY - 100.f, baseX + 120.f, baseY - 60.f);
+
+        // Right leg
+        if (incorrectGuesses > 5)
+            drawLine(baseX + 140.f, baseY - 100.f, baseX + 160.f, baseY - 60.f);
+
+        // Dead face (X eyes) if game over
+        if (incorrectGuesses >= 6)
+        {
+            sf::Text xEye("X", font, 20);
+            xEye.setFillColor(sf::Color::Red);
+            xEye.setPosition(baseX + 123.f, baseY - 210.f);
+            window.draw(xEye);
+            xEye.setPosition(baseX + 133.f, baseY - 210.f);
+            window.draw(xEye);
+        }
+    }
+};
+
+
+class GameWindow
+{
+private:
+    sf::RenderWindow window;
+    GameLogic game;
+    TextRenderer textRenderer;
+    HangmanRenderer hangmanRenderer;
+    sf::Texture backgroundTexture;
+    sf::Sprite backgroundSprite;
+
+    bool triedHintAfterUse = false;
+
+public:
+GameWindow(const vector<string> &words)
+: window(sf::VideoMode(800, 600), "Hangman Game"),
+  game(words),
+  textRenderer("Roboto.ttf"),
+  triedHintAfterUse(false)
+{
+if (!backgroundTexture.loadFromFile("background.jpg")) {
+    std::cerr << "Failed to load background image!" << std::endl;
+} else {
+    backgroundSprite.setTexture(backgroundTexture);
+    // Optional: scale image to fit window
+    backgroundSprite.setScale(
+        (float)window.getSize().x / backgroundTexture.getSize().x,
+        (float)window.getSize().y / backgroundTexture.getSize().y
+    );
+}
+}
+
+
+    void run()
+    {
+        while (window.isOpen())
+        {
+            handleEvents();
+            drawGame();
+        }
+    }
+
+    void handleEvents()
+{
+    sf::Event event;
+    while (window.pollEvent(event))
+    {
+        if (event.type == sf::Event::Closed)
+            window.close();
+
+            else if (event.type == sf::Event::KeyPressed) {
+                if (event.key.code == sf::Keyboard::H && !game.isHintUsed() && !game.isGameOver()) {
+                    bool hintGiven = game.useHint();
+                    triedHintAfterUse = !hintGiven;
+                }
+                else if (event.key.code >= sf::Keyboard::A && event.key.code <= sf::Keyboard::Z && !game.isGameOver()) {
+                    char entered = static_cast<char>(event.key.code + 'a'); // convert SFML keycode to lowercase char
+                    game.guess(entered);
+                }
+                else if (event.key.code == sf::Keyboard::X && game.isGameOver()) {
+                    window.close();
+                }
+            }
+            
+        }
+    }
