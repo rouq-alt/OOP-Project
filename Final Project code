@@ -1,0 +1,338 @@
+#include <SFML/Graphics.hpp>
+#include <iostream>
+#include <string>
+#include <ctime>
+#include <cstdlib>
+#include <cctype>
+#include <cmath>
+
+using namespace std;
+using namespace sf;
+
+class Renderer {
+public:
+    virtual void draw(RenderWindow& window) const = 0;
+    virtual ~Renderer() {}
+};
+
+class TextRenderer : public Renderer {
+private:
+    Font font;
+    string message;
+    int size;
+    Vector2f position;
+    Color color;
+    Text text;
+    string fontPath;
+
+public:
+    TextRenderer(const char* fontPath, const string& msg, int sz, const Vector2f& pos, Color col = Color::Black)
+        : fontPath(fontPath), message(msg), size(sz), position(pos), color(col) {
+        if (!font.loadFromFile(fontPath)) {
+            cerr << "Error loading font: " << fontPath << endl;
+        }
+        text.setFont(font);
+        text.setString(message);
+        text.setCharacterSize(size);
+        text.setFillColor(color);
+        text.setPosition(position);
+    }
+
+    void setMessage(const string& msg) {
+        message = msg;
+        text.setString(message);
+    }
+
+    void setColor(Color col) {
+        color = col;
+        text.setFillColor(color);
+    }
+
+    void setPosition(const Vector2f& pos) {
+        position = pos;
+        text.setPosition(position);
+    }
+
+    const Font& getFont() const { return font; }
+
+    void draw(RenderWindow& window) const override {
+        window.draw(text);
+    }
+
+    void setStyle(Text::Style style) {
+        text.setStyle(style);
+    }
+};
+
+class HangmanRenderer : public Renderer {
+private:
+    int incorrectGuesses;
+    const Font* font;
+
+public:
+    HangmanRenderer(const Font* gameFont) : incorrectGuesses(0), font(gameFont) {}
+
+    void setIncorrectGuesses(int guesses) {
+        incorrectGuesses = guesses;
+    }
+
+    void draw(RenderWindow& window) const override {
+        float baseX = 150.f;
+        float baseY = 550.f;
+        float thickness = 6.f;
+        Color lineColor = Color(60, 30, 10);
+
+        auto drawLine = [&](float x1, float y1, float x2, float y2) {
+            Vector2f start(x1, y1);
+            Vector2f end(x2, y2);
+            Vector2f direction = end - start;
+            float length = sqrt(direction.x * direction.x + direction.y * direction.y);
+            float angle = atan2(direction.y, direction.x) * 180.f / 3.14159f;
+
+            RectangleShape line(Vector2f(length, thickness));
+            line.setFillColor(lineColor);
+            line.setPosition(start);
+            line.setRotation(angle);
+            window.draw(line);
+        };
+
+        drawLine(baseX, baseY, baseX + 120.f, baseY);
+        drawLine(baseX + 60.f, baseY, baseX + 60.f, baseY - 250.f);
+        drawLine(baseX + 60.f, baseY - 250.f, baseX + 140.f, baseY - 250.f);
+        drawLine(baseX + 140.f, baseY - 250.f, baseX + 140.f, baseY - 220.f);
+
+        if (incorrectGuesses > 0) {
+            CircleShape head(25.f);
+            head.setPosition(baseX + 115.f, baseY - 220.f);
+            head.setFillColor(Color::Transparent);
+            head.setOutlineColor(Color::Black);
+            head.setOutlineThickness(3.f);
+            window.draw(head);
+
+            CircleShape eye(3.f);
+            eye.setFillColor(Color::Black);
+            eye.setPosition(baseX + 125.f, baseY - 210.f);
+            window.draw(eye);
+            eye.setPosition(baseX + 135.f, baseY - 210.f);
+            window.draw(eye);
+
+            RectangleShape mouth(Vector2f(10.f, 2.f));
+            mouth.setFillColor(Color::Black);
+            mouth.setPosition(baseX + 127.f, baseY - 195.f);
+            window.draw(mouth);
+        }
+        if (incorrectGuesses > 1) drawLine(baseX + 140.f, baseY - 170.f, baseX + 140.f, baseY - 100.f);
+        if (incorrectGuesses > 2) drawLine(baseX + 140.f, baseY - 160.f, baseX + 115.f, baseY - 140.f);
+        if (incorrectGuesses > 3) drawLine(baseX + 140.f, baseY - 160.f, baseX + 165.f, baseY - 140.f);
+        if (incorrectGuesses > 4) drawLine(baseX + 140.f, baseY - 100.f, baseX + 120.f, baseY - 60.f);
+        if (incorrectGuesses > 5) drawLine(baseX + 140.f, baseY - 100.f, baseX + 160.f, baseY - 60.f);
+
+        if (incorrectGuesses >= 6 && font) {
+            Text xEye("X", *font, 20);
+            xEye.setFillColor(Color::Red);
+            xEye.setPosition(baseX + 123.f, baseY - 210.f);
+            window.draw(xEye);
+            xEye.setPosition(baseX + 133.f, baseY - 210.f);
+            window.draw(xEye);
+        }
+    }
+};
+
+class GameLogic {
+private:
+    string word;
+    string guessedWord;
+    int incorrectGuesses;
+    bool hintUsed = false;
+
+public:
+    GameLogic(const char** words, int numWords) {
+        srand(static_cast<unsigned>(time(0)));
+        int randomIndex = rand() % numWords;
+        word = words[randomIndex];
+        guessedWord = string(word.length(), '_');
+        incorrectGuesses = 0;
+    }
+
+    bool guess(char letter) {
+        bool correct = false;
+        for (size_t i = 0; i < word.length(); ++i) {
+            if (word[i] == letter && guessedWord[i] == '_') {
+                guessedWord[i] = letter;
+                correct = true;
+            }
+        }
+        if (!correct) {
+            ++incorrectGuesses;
+        }
+        return correct;
+    }
+
+    bool useHint() {
+        if (hintUsed) return false;
+        hintUsed = true;
+        for (size_t i = 0; i < word.length(); ++i) {
+            if (guessedWord[i] == '_') {
+                guessedWord[i] = word[i];
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool isHintUsed() const {
+        return hintUsed;
+    }
+
+    string getGuessedWord() const { return guessedWord; }
+    int getIncorrectGuesses() const { return incorrectGuesses; }
+    bool isGameOver() const { return incorrectGuesses >= 6 || guessedWord == word; }
+    bool isGameWon() const { return guessedWord == word; }
+    string getWord() const { return word; }
+};
+
+class GameWindow {
+private:
+    RenderWindow window;
+    GameLogic game;
+    TextRenderer titleText;
+    TextRenderer wordText;
+    TextRenderer infoText;
+    TextRenderer hintText;
+    TextRenderer usedHintText;
+    TextRenderer messageText;
+    TextRenderer restartMsgText;
+    HangmanRenderer hangmanRenderer;
+    Texture backgroundTexture;
+    Sprite backgroundSprite;
+    bool triedHintAfterUse = false;
+
+public:
+    GameWindow(const char** words, int numWords)
+        : window(VideoMode(800, 600), "Hangman Game"),
+          game(words, numWords),
+          titleText("Roboto.ttf", "HANGMAN", 60, Vector2f(250.f, 10.f), Color(10, 30, 150)),
+          wordText("Roboto.ttf", string(words[0]), 45, Vector2f(100.f, 100.f), Color(47, 79, 79)),
+          infoText("Roboto.ttf", "Press A-Z to guess a letter", 20, Vector2f(100.f, 160.f), Color(96, 130, 150)),
+          hintText("Roboto.ttf", "Press [H] for a one-time hint!", 20, Vector2f(100.f, 210.f), Color(100, 120, 150)),
+          usedHintText("Roboto.ttf", "Hint already used!", 20, Vector2f(100.f, 310.f), Color(150, 50, 50)),
+          messageText("Roboto.ttf", "Incorrect guesses: 0", 25, Vector2f(100.f, 250.f), Color(255, 69, 0)),
+          restartMsgText("Roboto.ttf", "Press [X] or close to exit", 20, Vector2f(100.f, 280.f), Color(150, 0, 0)),
+          hangmanRenderer(&titleText.getFont()),
+          triedHintAfterUse(false) {
+
+        titleText.setMessage("HANGMAN");
+        titleText.setStyle(Text::Bold);
+        wordText.setStyle(Text::Bold);
+        infoText.setStyle(Text::Bold);
+        hintText.setStyle(Text::Bold);
+        usedHintText.setStyle(Text::Bold);
+        messageText.setStyle(Text::Bold);
+        restartMsgText.setStyle(Text::Bold);
+
+        if (!backgroundTexture.loadFromFile("background.jpg")) {
+            cerr << "Failed to load background image!" << endl;
+        } else {
+            backgroundSprite.setTexture(backgroundTexture);
+            backgroundSprite.setScale(
+                (float)window.getSize().x / backgroundTexture.getSize().x,
+                (float)window.getSize().y / backgroundTexture.getSize().y
+            );
+        }
+        wordText.setMessage(string(game.getWord().length(), '_'));
+    }
+
+    void run() {
+        while (window.isOpen()) {
+            handleEvents();
+            drawGame();
+        }
+    }
+
+    void handleEvents() {
+        Event event;
+        while (window.pollEvent(event)) {
+            if (event.type == Event::Closed)
+                window.close();
+            else if (event.type == Event::KeyPressed) {
+                if (event.key.code == Keyboard::H && !game.isHintUsed() && !game.isGameOver()) {
+                    bool hintGiven = game.useHint();
+                    triedHintAfterUse = !hintGiven;
+                    wordText.setMessage(getSpacedWord(game.getGuessedWord()));
+                } else if (event.key.code >= Keyboard::A && event.key.code <= Keyboard::Z && !game.isGameOver()) {
+                    char entered = static_cast<char>(event.key.code + 'a');
+                    game.guess(entered);
+                    wordText.setMessage(getSpacedWord(game.getGuessedWord()));
+                    hangmanRenderer.setIncorrectGuesses(game.getIncorrectGuesses());
+                } else if (event.key.code == Keyboard::X && game.isGameOver()) {
+                    window.close();
+                }
+            }
+        }
+    }
+
+    void drawGame() {
+        window.clear();
+        window.draw(backgroundSprite);
+
+        titleText.draw(window);
+        wordText.draw(window);
+        infoText.draw(window);
+
+        if (!game.isHintUsed()) {
+            hintText.draw(window);
+        } else if (triedHintAfterUse) {
+            usedHintText.draw(window);
+        }
+
+        string message;
+        Color messageColor = Color(255, 69, 0);
+
+        if (game.isGameOver()) {
+            if (game.isGameWon()) {
+                message = " You Won!";
+                messageColor = Color::Green;
+            } else {
+                message = " You Lost! The word was: " + game.getWord();
+                messageColor = Color::Red;
+            }
+            restartMsgText.draw(window);
+        } else {
+            message = "Incorrect guesses: " + to_string(game.getIncorrectGuesses());
+        }
+        messageText.setMessage(message);
+        messageText.setColor(messageColor);
+        messageText.draw(window);
+
+        hangmanRenderer.draw(window);
+
+        window.display();
+    }
+
+private:
+    string getSpacedWord(const string& display) const {
+        string spaced;
+        for (char c : display) {
+            spaced += c;
+            spaced += ' ';
+        }
+        return spaced;
+    }
+};
+
+int main() {
+    const char* words[] = {
+        "tiger", "zebra", "giraffe", "monkey", "donkey", "rabbit", "panda", "jaguar", "koala", "hyena", "lizard", "sheep", "otter", "ferret", "hippo", "koala", "rhino",
+        "shark", "whale", "bison", "turtle", "horse", "mouse", "puppy", "polar", "moose", "falcon", "beagle", "lemur", "skunk", "eagle", "sloth",
+        "cobra", "ferret", "squid", "camel", "shrew", "raven", "snail", "crane", "lemur", "walrus", "chimp", "goose", "octopus", "pigeon", "baboon",
+        "python", "beetle", "jaguar", "albania", "algeria", "pakistan", "armenia", "austria", "bahamas", "bahrain", "belarus", "belgium", "bermuda", "bolivia", "burundi",
+        "comoros", "croatia", "curacao", "denmark", "argentina", "ecuador", "eritrea", "estonia", "finland", "georgia", "germany",
+        "grenada", "hungary", "iceland", "ireland", "jamaica", "lebanon", "lesotho", "liberia", "mayotte", "moldova", "morocco",
+        "myanmar", "namibia", "nigeria", "reunion", "romania", "senegal", "somalia", "tokelau", "tunisia", "ukraine"
+    };
+    int numWords = sizeof(words) / sizeof(words[0]);
+
+    GameWindow gameWindow(words, numWords);
+    gameWindow.run();
+    return 0;
+}
